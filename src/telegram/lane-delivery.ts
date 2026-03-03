@@ -338,22 +338,31 @@ export function createLaneTextDeliverer(params: CreateLaneTextDelivererParams) {
       let draftPreviewStopped = false;
       if (canFinalizeDraftPreviewDirectly) {
         const previewRevisionBeforeFlush = lane.stream?.previewRevision?.() ?? 0;
+        const finalTextSnapshot = text.trimEnd();
         const hasEmittedPreviewInCurrentLane =
           previewRevisionBeforeFlush > lane.previewRevisionBaseline;
-        const alreadyAtFinalText = text === lane.lastPartialText && hasEmittedPreviewInCurrentLane;
+        const deliveredPreviewTextBeforeFinal = lane.stream?.lastDeliveredText?.() ?? "";
+        const finalTextAlreadyDelivered =
+          deliveredPreviewTextBeforeFinal === finalTextSnapshot && hasEmittedPreviewInCurrentLane;
+        const unchangedFinalText = text === lane.lastPartialText;
         lane.stream?.update(text);
         await params.flushDraftLane(lane);
         await params.stopDraftLane(lane);
         draftPreviewStopped = true;
         const previewUpdated = (lane.stream?.previewRevision?.() ?? 0) > previewRevisionBeforeFlush;
-        if (previewUpdated || alreadyAtFinalText) {
+        const deliveredPreviewTextAfterFinal =
+          lane.stream?.lastDeliveredText?.() ?? deliveredPreviewTextBeforeFinal;
+        if (
+          (previewUpdated && deliveredPreviewTextAfterFinal === finalTextSnapshot) ||
+          (unchangedFinalText && finalTextAlreadyDelivered)
+        ) {
           lane.lastPartialText = text;
           params.finalizedPreviewByLane[laneName] = true;
           params.markDelivered();
           return "preview-finalized";
         }
         params.log(
-          `telegram: ${laneName} draft finalization not emitted; falling back to standard send`,
+          `telegram: ${laneName} draft final text not emitted; falling back to standard send`,
         );
       }
 
